@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title></title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    background: #1a1512;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Blurred fill behind the portrait media on wide screens. */
+  .backdrop {
+    position: fixed;
+    inset: -40px;
+    background-image: url("bg-blur.jpg");
+    background-size: cover;
+    background-position: center;
+    filter: blur(28px) saturate(1.15) brightness(.6);
+    transform: scale(1.1);
+    z-index: 0;
+  }
+
+  /*
+    The film. This is a real <video>, which is the whole point: iOS gives
+    video elements audio privileges that it withholds from audio elements.
+    The poster is the same photo, so nothing looks different before playback.
+  */
+  .film {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(100vw, calc(100vh * 0.75));
+    height: min(100vh, calc(100vw / 0.75));
+    object-fit: cover;
+    z-index: 1;
+    background: #1a1512;
+  }
+
+  /* Gentle vignette so the button reads against the bright sky. */
+  .veil {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(100vw, calc(100vh * 0.75));
+    height: min(100vh, calc(100vw / 0.75));
+    z-index: 2;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at 48% 55%,
+      rgba(0,0,0,0) 0%,
+      rgba(0,0,0,.10) 45%,
+      rgba(0,0,0,.40) 100%
+    );
+  }
+
+  /* Coordinates match the sun in the photo. */
+  button {
+    position: absolute;
+    left: calc(50% - min(50vw, 50vh * 0.75) + min(100vw, 100vh * 0.75) * 0.483);
+    top: calc(50% - min(50vh, 50vw / 0.75) + min(100vh, 100vw / 0.75) * 0.548);
+    transform: translate(-50%, -50%);
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    -webkit-tap-highlight-color: transparent;
+    pointer-events: auto;
+    z-index: 3;
+    background:
+      radial-gradient(circle at 50% 50%,
+        rgba(255, 254, 235, .97) 0%,
+        rgba(255, 249, 190, .90) 26%,
+        rgba(253, 238, 140, .60) 52%,
+        rgba(251, 226, 110, .18) 78%,
+        rgba(250, 215, 95, 0) 100%);
+    box-shadow:
+      0 0 30px 12px rgba(255, 240, 150, .38),
+      0 0 80px 40px rgba(252, 210, 100, .18);
+    color: #7a5c05;
+    transition: filter .18s ease, box-shadow .18s ease, transform .12s ease,
+                opacity .25s ease;
+  }
+
+  button:hover {
+    filter: brightness(1.05);
+    box-shadow:
+      0 0 38px 16px rgba(255, 240, 150, .50),
+      0 0 100px 50px rgba(252, 210, 100, .24);
+  }
+
+  button:active { transform: translate(-50%, -50%) scale(.95); }
+  button:focus-visible { outline: 2px solid rgba(255,255,255,.85); outline-offset: 6px; }
+
+  /* Hide the button once playing, so it does not sit over the photo.
+     Tap anywhere to pause and bring it back. */
+  button.is-playing { opacity: 0; pointer-events: none; }
+
+  svg { display: block; }
+  .play-icon { margin-left: 4px; }
+
+  @media (max-width: 520px) {
+    button { width: 74px; height: 74px; }
+    .play-icon { margin-left: 3px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    button { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="backdrop" aria-hidden="true"></div>
+
+<video
+  id="film"
+  class="film"
+  src="track.mp4"
+  poster="bg.jpg"
+  preload="metadata"
+  playsinline
+  webkit-playsinline
+  x5-playsinline
+></video>
+
+<div class="veil" aria-hidden="true"></div>
+
+<button id="toggle" aria-label="Play" aria-pressed="false">
+  <svg class="play-icon" width="24" height="27" viewBox="0 0 30 34" aria-hidden="true">
+    <path d="M2 2 L28 17 L2 32 Z" fill="currentColor"/>
+  </svg>
+</button>
+
+<script>
+(function () {
+  "use strict";
+
+  var video  = document.getElementById('film');
+  var button = document.getElementById('toggle');
+
+  function setPlaying(on) {
+    button.classList.toggle('is-playing', on);
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    button.setAttribute('aria-label', on ? 'Pause' : 'Play');
+  }
+
+  function toggle() {
+    if (video.paused || video.ended) {
+      if (video.ended) video.currentTime = 0;
+      var p = video.play();
+      if (p && p.catch) {
+        p.catch(function (err) {
+          // Logged rather than silent, so a failure is diagnosable.
+          console.error('play() rejected:', err && err.name);
+          setPlaying(false);
+        });
+      }
+      setPlaying(true);
+    } else {
+      video.pause();
+      setPlaying(false);
+    }
+  }
+
+  button.addEventListener('click', toggle);
+
+  // While playing, a tap anywhere pauses. Listens on the document but checks
+  // that the tap did not originate inside the button, since the button's own
+  // click would otherwise start then immediately pause playback.
+  document.addEventListener('click', function (e) {
+    if (button.contains(e.target)) return;
+    if (!video.paused) {
+      video.pause();
+      setPlaying(false);
+    }
+  });
+
+  video.addEventListener('play',  function () { setPlaying(true);  });
+  video.addEventListener('pause', function () { setPlaying(false); });
+  video.addEventListener('ended', function () {
+    setPlaying(false);
+    video.currentTime = 0;
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.code === 'Space' && document.activeElement !== button) {
+      e.preventDefault();
+      toggle();
+    }
+  });
+})();
+</script>
+</body>
+</html>
